@@ -17,7 +17,7 @@
   #help{position:fixed;right:12px;top:12px;color:#fff;background:rgba(0,0,0,.5);padding:8px 12px;border-radius:8px;
     font:12px/1.55 ui-monospace,monospace;pointer-events:none}
   #ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(10,16,28,.88);z-index:9;color:#eee}
-  #ov div{max-width:460px;padding:26px;background:#16202e;border-radius:14px;box-shadow:0 10px 40px #000}
+  #ov div{max-width:460px;max-height:92vh;overflow:auto;padding:22px;background:#16202e;border-radius:14px;box-shadow:0 10px 40px #000}
   #ov h1{margin:0 0 6px;font-size:22px} #ov p{font-size:13px;color:#aab;margin:8px 0}
   #ov select,#ov input{width:100%;padding:9px;margin:4px 0 10px;border-radius:7px;border:1px solid #345;background:#0d1520;color:#fff;box-sizing:border-box}
   #ov button{width:100%;padding:12px;border:0;border-radius:8px;background:#2f8cff;color:#fff;font-size:16px;font-weight:700;cursor:pointer}
@@ -26,21 +26,21 @@
 <body>
 <div id="c"></div>
 <div id="msg"></div>
-<div id="help">↑/↓ Höhenruder · ←/→ Querruder · Q/E Seitenruder<br>W/S Gas · F/V Klappen · B Bremse · ,/. Trimmung<br>C Kamera · Maus ziehen: umschauen · P Pause · R Neustart</div>
+<div id="help">↑/↓ Höhenruder · ←/→ Querruder · Q/E Seitenruder<br>W/S Gas · F/V Klappen · G Fahrwerk · X Spoiler<br>B Bremse · T Autotrimmung · ,/. Trimmung<br>C Kamera · Maus: umschauen · P Pause · R Neustart</div>
 <div id="hud"><canvas id="hz" width="130" height="130"></canvas><pre id="t"></pre></div>
 <div id="ov"><div>
   <h1>✈ Flugsimulator</h1>
-  <p>Cessna-172-ähnliches Flugmodell auf echten Satellitenbildern (Esri World Imagery, CesiumJS).</p>
-  <label>Startpunkt</label>
-  <select id="st">
-    <option value="0">Stuttgart EDDS, Bahn 07 (Piste)</option>
-    <option value="1">San Francisco KSFO, Bahn 28R (Piste)</option>
-    <option value="2">Matterhorn, 5000 m (Luftstart)</option>
-    <option value="3">Grand Canyon, 3000 m (Luftstart)</option>
-  </select>
-  <label>Cesium-ion-Token (optional, für 3D-Gelände – kostenlos auf cesium.com/ion)</label>
+  <label>Flugzeug</label>
+  <select id="ac"><option value="c172">Cessna 172 – Kolbenmotor</option><option value="lj45">Learjet 45 – Business-Jet</option><option value="a320">Airbus A320 – Airliner</option></select>
+  <label>Flughafen suchen (ICAO, Name oder Stadt)</label>
+  <input id="q" value="EDDS" oninput="fill()"><select id="ap" onchange="rw()"></select>
+  <label>Piste</label><select id="rw"></select>
+  <label><input type="checkbox" id="air" style="width:auto"> Luftstart über der Piste</label>
+  <label>Wind aus Richtung (°) / Stärke (kt)</label>
+  <div style="display:flex;gap:8px"><input id="wd" type="number" value="270"><input id="ws" type="number" value="0"></div>
+  <label>Ortszeit</label><input id="tm" type="time" value="12:00">
+  <label>Cesium-ion-Token (optional, kostenlos): 3D-Gelände, Wasser, 3D-Gebäude</label>
   <input id="tk" placeholder="eyJhbGciOi…">
-  <p>Ohne Token ist das Gelände flach (Bilder bleiben echt). Der Token wird nur lokal in deinem Browser gespeichert.</p>
   <button id="go">Start</button>
 </div></div>
 
@@ -48,14 +48,21 @@
 // ================= Konfiguration =================
 const MODEL_URL = 'https://raw.githubusercontent.com/CesiumGS/cesium/main/Apps/SampleData/models/CesiumAir/Cesium_Air.glb';
 const MODEL_YAW = 0; // falls das Modell seitlich steht: z. B. Math.PI/2 oder -Math.PI/2
-const STARTS = [
-  {lat:48.6858, lon:9.2008, hdg:73,  air:false},
-  {lat:37.6136, lon:-122.3570, hdg:284, air:false},
-  {lat:45.9763, lon:7.6586, hdg:20, air:true, alt:5000},
-  {lat:36.1070, lon:-112.1130, hdg:90, air:true, alt:3000}
-];
-// Flugzeugdaten (C172)
-const m=1100,g=9.81,S_w=16.2,b=11,c=1.5,Ix=1285,Iy=1825,Iz=2666;
+const g=9.81;
+// Flugzeugdaten (vereinfachte, aus öffentlichen Daten abgeleitete Beiwerte)
+const ACS={
+ c172:{me:950,fuel:150,S:16.2,b:11,c:1.5,Ix:1285,Iy:1825,Iz:2666,CL0:.31,CLa:5.1,ast:.28,CD0:.028,k:.057,fcl:.55,fcd:.05,
+  T0:2400,Vz:120,ex:.8,ff:.01,tau:.4,gear:0,gcd:0,spd:.03,Cma:-.89,Cmq:-12.4,Ce:.15,Cnb:.065,Cnd:.04,Cnr:-.099,
+  h0:1.0,comp:.15,dm:.9,thmax:.2,hl:5,st:.45,eye:[.7,.75],ms:1.3,v:55,thr0:.65,hAir:1000},
+ lj45:{me:6200,fuel:2300,S:29.1,b:14.5,c:2.1,Ix:2.6e4,Iy:4e4,Iz:6e4,CL0:.25,CLa:5,ast:.27,CD0:.022,k:.048,fcl:.7,fcd:.06,
+  T0:32000,Vz:600,ex:.85,ff:.45,tau:1.8,gear:1,gcd:.02,spd:.06,Cma:-1.4,Cmq:-22,Ce:.25,Cnb:.1,Cnd:.05,Cnr:-.11,
+  h0:1.6,comp:.2,dm:1.2,thmax:.17,hl:4.5,st:.25,eye:[4.5,.9],ms:2.4,v:110,thr0:.5,hAir:3000},
+ a320:{me:52000,fuel:12000,S:122.6,b:34.1,c:4.29,Ix:1e6,Iy:3.2e6,Iz:4.1e6,CL0:.2,CLa:5.4,ast:.27,CD0:.021,k:.045,fcl:.9,fcd:.07,
+  T0:230000,Vz:600,ex:.85,ff:1.8,tau:2.5,gear:1,gcd:.025,spd:.07,Cma:-1.8,Cmq:-28,Ce:.3,Cnb:.12,Cnd:.06,Cnr:-.12,
+  h0:2.6,comp:.3,dm:1.6,thmax:.15,hl:4,st:.15,eye:[14,1.8],ms:5.5,v:140,thr0:.5,hAir:3000}};
+function atm(h){const hc=Math.max(h,0),T=hc<11000?288.15-.0065*hc:216.65,
+ p=hc<11000?Math.pow(T/288.15,5.2559):.2234*Math.exp(-(hc-11000)/6341.6);
+ return {rho:1.225*p*288.15/T,a:Math.sqrt(401.9*T)};}
 
 // ================= Viewer =================
 const esri = new Cesium.UrlTemplateImageryProvider({
@@ -67,7 +74,8 @@ const viewer = new Cesium.Viewer('c',{
   infoBox:false, selectionIndicator:false, terrainProvider:new Cesium.EllipsoidTerrainProvider()});
 const scene=viewer.scene, cam=viewer.camera;
 scene.screenSpaceCameraController.enableInputs=false;
-scene.globe.maximumScreenSpaceError=1.5;
+scene.globe.maximumScreenSpaceError=1.1; scene.globe.enableLighting=true; scene.globe.showGroundAtmosphere=true;
+viewer.resolutionScale=Math.min(devicePixelRatio,2); scene.msaaSamples=4; scene.postProcessStages.fxaa.enabled=true;
 scene.globe.depthTestAgainstTerrain=true;
 scene.fog.enabled=true; scene.fog.density=0.0002;
 viewer.clock.currentTime=Cesium.JulianDate.fromIso8601('2026-06-21T10:30:00Z');
@@ -86,78 +94,78 @@ const D2R=Math.PI/180;
 
 // ================= Zustand =================
 let S, gh=0, cfg, paused=false, camMode=0, lookYaw=0, lookPitch=0, dragging=false, msg='';
-const keys={};
+let AC=ACS.c172, WIND=[0,0,0]; const keys={};
 function reset(){
-  const h=cfg.hdg*D2R;
-  S={lat:cfg.lat*D2R,lon:cfg.lon*D2R,h:cfg.air?cfg.alt:gh+0.9,
-     vel:cfg.air?[Math.sin(h)*55,Math.cos(h)*55,0]:[0,0,0],
-     f:[Math.sin(h),Math.cos(h),0],r:[Math.cos(h),-Math.sin(h),0],u:[0,0,1],
-     p:0,q:0,rr:0,thr:cfg.air?0.65:0,flaps:0,ail:0,elev:0,rud:0,trim:cfg.air?0.04:0,nz:1,stall:false,onGround:false};
-  msg='';
+  const A=AC,h=cfg.hdg*D2R,air=cfg.air,sp=air?A.v:0;
+  S={lat:cfg.lat*D2R,lon:cfg.lon*D2R,h:air?gh+A.hAir:gh+A.h0-A.comp,
+     vel:[Math.sin(h)*sp,Math.cos(h)*sp,0],f:[Math.sin(h),Math.cos(h),0],r:[Math.cos(h),-Math.sin(h),0],u:[0,0,1],
+     p:0,q:0,rr:0,thr:air?A.thr0:0,n:air?A.thr0:0,flaps:0,flapT:0,spl:0,splT:0,gear:(air&&A.gear)?0:1,gearT:(air&&A.gear)?0:1,
+     fuel:A.fuel,ail:0,elev:0,rud:0,trim:0,nz:1,stall:false,onGround:false,park:!air,at:air?4:0,Cm:0};
+  plane.model.scale=A.ms; msg='';
 }
 
 // ================= Physik =================
 function step(dt){
-  const R=6371000+S.h, rho=1.225*Math.exp(-Math.max(S.h,0)/9000);
-  const v=S.vel, Vm=V.len(v)+1e-6, Vh=V.sc(v,1/Vm);
+  const A=AC, R=6371000+S.h, at=atm(S.h), rho=at.rho, M=A.me+S.fuel, mg=M*g, ir=M/(A.me+A.fuel*.6);
+  if(S.park&&S.thr>.1)S.park=false;
+  const v=V.sub(S.vel,WIND), Vm=V.len(v)+1e-6, Vh=V.sc(v,1/Vm), mach=Vm/at.a;
   const vf=V.dot(v,S.f), vr=V.dot(v,S.r), vu=V.dot(v,S.u);
-  const alpha=Math.atan2(-vu,Math.max(vf,0.5)), beta=Math.asin(clamp(vr/Vm,-1,1));
-  const qb=0.5*rho*Vm*Vm;
-  // Auftrieb mit Strömungsabriss
-  const CL0=0.31+0.55*S.flaps, ast=0.28-0.02*S.flaps;
-  let CL=CL0+5.1*clamp(alpha,-ast,ast);
-  const over=Math.abs(alpha)-ast;
-  if(over>0) CL*=Math.max(0.5,1-over*4);
-  S.stall=alpha>ast*0.95 && Vm>8;
-  const CD=0.028+0.05*S.flaps+0.057*CL*CL+(over>0?Math.min(0.6,over*2.5):0);
-  const Ldir=V.nrm(V.cr(S.r,Vh));
-  let F=V.sc(Ldir,qb*S_w*CL);
-  const Lf=V.dot(F,S.u);
-  F=V.add(F,V.sc(Vh,-qb*S_w*CD));
-  F=V.add(F,V.sc(S.r,-qb*S_w*0.4*beta));
-  F=V.add(F,V.sc(S.f,Math.max(0,S.thr*2400*(1-Math.max(vf,0)/120))*Math.pow(rho/1.225,0.8)));
-  F=V.add(F,[0,0,-m*g]);
-  // Fahrwerk / Boden
-  const pen=1.0-(S.h-gh); let gf=0; S.onGround=false;
+  const alpha=Math.atan2(-vu,Math.max(vf,.5)), beta=Math.asin(clamp(vr/Vm,-1,1)), qb=.5*rho*Vm*Vm;
+  S.flaps+=clamp(S.flapT-S.flaps,-.1*dt,.1*dt); S.spl+=clamp(S.splT-S.spl,-.5*dt,.5*dt);
+  S.gear+=clamp(S.gearT-S.gear,-.12*dt,.12*dt);
+  S.n+=(S.thr-S.n)*Math.min(1,dt/A.tau);
+  if(S.fuel<=0)S.n=0; S.fuel=Math.max(0,S.fuel-A.ff*S.n*dt);
+  const CL0=A.CL0+A.fcl*S.flaps, ast=A.ast-.02*S.flaps, over=Math.abs(alpha)-ast;
+  let CL=CL0+A.CLa*clamp(alpha,-ast,ast);
+  if(over>0)CL*=Math.max(.5,1-over*4);
+  CL*=1-5*A.spd*S.spl; S.stall=alpha>ast*.95&&Vm>8;
+  const hb=16*Math.max(S.h-gh,0)/A.b, ge=hb*hb/(1+hb*hb);   // Bodeneffekt auf induzierten Widerstand
+  const CD=A.CD0+A.fcd*S.flaps+A.gcd*S.gear+A.spd*S.spl+A.k*ge*CL*CL+30*Math.pow(Math.max(0,mach-.78),2)+(over>0?Math.min(.6,over*2.5):0);
+  let F=V.sc(V.nrm(V.cr(S.r,Vh)),qb*A.S*CL); const Lf=V.dot(F,S.u);
+  F=V.add(F,V.sc(Vh,-qb*A.S*CD));
+  F=V.add(F,V.sc(S.r,-qb*A.S*.4*beta));
+  F=V.add(F,V.sc(S.f,A.T0*S.n*Math.pow(rho/1.225,A.ex)*Math.max(0,1-Math.max(vf,0)/A.Vz)));
+  F=V.add(F,[0,0,-mg]);
+  const h0=A.h0*(S.gear>.9?1:.55), pen=h0-(S.h-gh); let gf=0; S.onGround=false;
   if(pen>0){
-    S.onGround=true; gf=clamp(pen/0.15,0,1);
-    const k=m*g/0.15, N=Math.max(0,k*pen-6500*v[2]);
-    if(v[2]<-6 && !msg) msg='HARTE LANDUNG – R drückt Neustart';
+    S.onGround=true; gf=clamp(pen/A.comp,0,1);
+    const k=mg/A.comp, N=Math.max(0,k*pen-.73*Math.sqrt(k*M)*S.vel[2]);
+    if(S.vel[2]<-A.hl&&!msg)msg='HARTE LANDUNG – R für Neustart';
     F=V.add(F,[0,0,N]);
-    const Ff=-Math.sign(vf)*Math.min(Math.abs(vf)*m/dt,(0.025+(keys.KeyB||keys.Space?0.5:0))*N);
-    const Fl=clamp(-vr*m/dt,-0.9*N,0.9*N);
-    F=V.add(F,V.add(V.sc(S.f,Ff),V.sc(S.r,Fl)));
+    const vfg=V.dot(S.vel,S.f), vrg=V.dot(S.vel,S.r), br=keys.KeyB||keys.Space||S.park;
+    const mu=S.gear>.9?.025+(br?.5:0):.6;
+    F=V.add(F,V.add(V.sc(S.f,-Math.sign(vfg)*Math.min(Math.abs(vfg)*M/dt,mu*N)),V.sc(S.r,clamp(-vrg*M/dt,-.9*N,.9*N))));
   }
-  S.vel=V.add(v,V.sc(F,dt/m));
-  // Momente
-  const Vs=Math.max(Vm,15), pn=S.p*b/(2*Vs), qn=S.q*c/(2*Vs), rn=S.rr*b/(2*Vs);
-  let Cm=0.02-0.89*alpha-12.4*qn+0.15*(S.elev+S.trim)-(over>0?0.25:0);
-  const Cl=-0.089*beta-0.47*pn+0.096*rn+0.03*S.ail;
-  const Cn=0.065*beta-0.099*rn-0.03*pn+0.04*S.rud-0.004*S.ail;
-  S.q+=qb*S_w*c*Cm/Iy*dt; S.p+=qb*S_w*b*Cl/Ix*dt; S.rr+=qb*S_w*b*Cn/Iz*dt;
-  if(S.stall) S.p+=(Math.random()-0.5)*3*dt*Math.min(1,Vm/20);
+  S.vel=V.add(S.vel,V.sc(F,dt/M));
+  const Vs=Math.max(Vm,15), pn=S.p*A.b/(2*Vs), qn=S.q*A.c/(2*Vs), rn=S.rr*A.b/(2*Vs);
+  const Cm=.02+A.Cma*alpha+A.Cmq*qn+A.Ce*(S.elev+S.trim)-(over>0?.25:0); S.Cm=Cm;
+  const Cl=-.089*beta-.47*pn+.096*rn+.03*S.ail, Cn=A.Cnb*beta+A.Cnr*rn-.03*pn+A.Cnd*S.rud-.004*S.ail;
+  S.q+=qb*A.S*A.c*Cm/(A.Iy*ir)*dt; S.p+=qb*A.S*A.b*Cl/(A.Ix*ir)*dt; S.rr+=qb*A.S*A.b*Cn/(A.Iz*ir)*dt;
+  if(S.at>0){S.at-=dt; S.trim=clamp(S.trim-S.Cm/A.Ce*1.5*dt,-.4,.4);}
+  if(S.stall)S.p+=(Math.random()-.5)*3*dt*Math.min(1,Vm/20);
   if(gf>0){
     const th=Math.asin(clamp(S.f[2],-1,1)), ph=Math.atan2(-S.r[2],S.u[2]);
-    S.q+=(-10*th-4*S.q)*gf*dt; S.p+=(-10*ph-6*S.p)*gf*dt;
-    S.rr+=(S.rud*0.45*clamp(vf/8,0,1)-S.rr)*Math.min(1,5*dt)*gf;
+    if(th>0)S.q+=(-Math.max(0,mg-Lf)*A.dm/(A.Iy*ir)-3*S.q)*dt;       // Rotation über den Hauptfahrwerken
+    else S.q+=(-30*th-8*S.q)*dt;                                       // Bugrad liegt auf
+    if(th>A.thmax)S.q+=(-30*(th-A.thmax)-8*S.q)*dt;                    // Heckaufsetzer
+    S.p+=(-10*ph-6*S.p)*gf*dt;
+    S.rr+=(S.rud*A.st*clamp(V.dot(S.vel,S.f)/8,0,1)-S.rr)*Math.min(1,5*dt)*gf;
   }
-  // Orientierung integrieren
   const w=V.add(V.add(V.sc(S.f,S.p),V.sc(S.r,S.q)),V.sc(S.u,-S.rr));
-  const tr=[-S.vel[1]/R,S.vel[0]/R,S.vel[0]*Math.tan(S.lat)/R];
-  const wt=V.sub(w,tr);
+  const wt=V.sub(w,[-S.vel[1]/R,S.vel[0]/R,S.vel[0]*Math.tan(S.lat)/R]);
   S.f=rot(S.f,wt,dt); S.r=rot(S.r,wt,dt); S.u=rot(S.u,wt,dt);
   S.f=V.nrm(S.f); S.r=V.nrm(V.sub(S.r,V.sc(S.f,V.dot(S.r,S.f)))); S.u=V.cr(S.r,S.f);
-  // Position
   S.lat+=S.vel[1]/R*dt; S.lon+=S.vel[0]/(R*Math.cos(S.lat))*dt; S.h+=S.vel[2]*dt;
-  if(S.h<gh+0.35){S.h=gh+0.35; if(S.vel[2]<0)S.vel[2]=0;}
-  S.nz=0.9*S.nz+0.1*(Lf/(m*g));
+  if(S.h<gh+.35){S.h=gh+.35; if(S.vel[2]<0)S.vel[2]=0;}
+  S.nz=.9*S.nz+.1*(Lf/mg);
 }
 
 // ================= Eingabe =================
 addEventListener('keydown',e=>{keys[e.code]=true;
   if(e.code==='KeyC')camMode^=1; if(e.code==='KeyP')paused=!paused; if(e.code==='KeyR'&&S)reset();
-  if(e.code==='KeyF'&&S)S.flaps=Math.min(1,Math.round((S.flaps+0.333)*3)/3);
-  if(e.code==='KeyV'&&S)S.flaps=Math.max(0,Math.round((S.flaps-0.333)*3)/3);
+  if(e.code==='KeyF'&&S)S.flapT=Math.min(1,Math.round((S.flapT+0.333)*3)/3);
+  if(e.code==='KeyG'&&S&&AC.gear&&!S.onGround)S.gearT=1-S.gearT; if(e.code==='KeyX'&&S)S.splT=1-S.splT; if(e.code==='KeyT'&&S)S.at=3;
+  if(e.code==='KeyV'&&S)S.flapT=Math.max(0,Math.round((S.flapT-0.333)*3)/3);
   if(e.code==='Comma'&&S)S.trim=clamp(S.trim-0.01,-0.3,0.3); if(e.code==='Period'&&S)S.trim=clamp(S.trim+0.01,-0.3,0.3);
   if(e.code.startsWith('Arrow')||e.code==='Space')e.preventDefault();});
 addEventListener('keyup',e=>keys[e.code]=false);
@@ -192,8 +200,8 @@ function render(){
   plane.show=camMode===1;
   let dir=rot(rot(S.f,S.u,-lookYaw),S.r,lookPitch), up=rot(S.u,S.r,lookPitch);
   let eye;
-  if(camMode===0){ eye=V.add(V.sc(S.f,0.7),V.sc(S.u,0.75)); }
-  else { eye=V.add(V.sc(dir,-16),V.sc(up,4.5)); dir=V.nrm(V.sub([0,0,0],eye)); up=S.u; }
+  if(camMode===0){ eye=V.add(V.sc(S.f,AC.eye[0]),V.sc(S.u,AC.eye[1])); }
+  else { eye=V.add(V.sc(dir,-16*AC.ms/1.3),V.sc(up,4.5*AC.ms/1.3)); dir=V.nrm(V.sub([0,0,0],eye)); up=S.u; }
   cam.setView({destination:Cesium.Cartesian3.add(pos,W(eye),new Cesium.Cartesian3()),
     orientation:{direction:W(dir),up:W(up)}});
 }
@@ -209,15 +217,15 @@ scene.preUpdate.addEventListener(()=>{
   render(); hud();
 });
 function hud(){
-  const Vm=V.len(S.vel), rho=1.225*Math.exp(-Math.max(S.h,0)/9000);
-  const ias=Vm*Math.sqrt(rho/1.225)*1.944, hdg=(Math.atan2(S.f[0],S.f[1])/D2R+360)%360;
-  const pit=Math.asin(clamp(S.f[2],-1,1)), rol=Math.atan2(-S.r[2],S.u[2]);
+  const va=V.len(V.sub(S.vel,WIND)), at=atm(S.h), ias=va*Math.sqrt(at.rho/1.225)*1.944, mach=va/at.a;
+  const hdg=(Math.atan2(S.f[0],S.f[1])/D2R+360)%360, pit=Math.asin(clamp(S.f[2],-1,1)), rol=Math.atan2(-S.r[2],S.u[2]);
   tEl.textContent=
-`IAS  ${ias.toFixed(0).padStart(4)} kt   HDG ${hdg.toFixed(0).padStart(3)}°
-ALT  ${(S.h*3.281).toFixed(0).padStart(5)} ft  AGL ${Math.max(0,(S.h-gh)*3.281).toFixed(0).padStart(5)} ft
-VS   ${(S.vel[2]*196.85).toFixed(0).padStart(5)} fpm  G ${S.nz.toFixed(1)}
-GAS  ${(S.thr*100).toFixed(0).padStart(3)}%  KLAPPEN ${(S.flaps*30).toFixed(0)}°  TRIM ${(S.trim*100).toFixed(0)}
-${S.onGround?'AM BODEN ':''}${keys.KeyB||keys.Space?'BREMSE':''}${paused?' PAUSE':''}`;
+`IAS ${ias.toFixed(0).padStart(4)} kt  MACH ${mach.toFixed(2)}  HDG ${hdg.toFixed(0).padStart(3)}°
+ALT ${(S.h*3.281).toFixed(0).padStart(5)} ft  AGL ${Math.max(0,(S.h-gh)*3.281).toFixed(0).padStart(5)} ft
+VS  ${(S.vel[2]*196.85).toFixed(0).padStart(5)} fpm  G ${S.nz.toFixed(1)}
+GAS ${(S.thr*100).toFixed(0).padStart(3)}% (N ${(S.n*100).toFixed(0)}%)  TRIM ${(S.trim*100).toFixed(0)}
+KLAPPEN ${(S.flapT*30).toFixed(0)}°  FAHRWERK ${S.gear>.95?'AUS':S.gear<.05?'EIN':'...'}  SPOILER ${(S.spl*100).toFixed(0)}%
+SPRIT ${S.fuel.toFixed(0)} kg  ${S.onGround?'AM BODEN ':''}${keys.KeyB||keys.Space||S.park?'BREMSE ':''}${paused?'PAUSE':''}`;
   mEl.textContent=msg||(S.stall?'STALL!':'');
   hz.clearRect(0,0,130,130); hz.save(); hz.beginPath(); hz.arc(65,65,63,0,7); hz.clip();
   hz.translate(65,65); hz.rotate(-rol); hz.translate(0,pit/D2R*2.2);
@@ -227,22 +235,32 @@ ${S.onGround?'AM BODEN ':''}${keys.KeyB||keys.Space?'BREMSE':''}${paused?' PAUSE
 }
 
 // ================= Start =================
-document.getElementById('tk').value=localStorage.getItem('cesiumToken')||'';
-document.getElementById('go').onclick=async()=>{
-  cfg=STARTS[+document.getElementById('st').value];
-  const tk=document.getElementById('tk').value.trim();
-  document.getElementById('go').textContent='Lade Gelände …';
-  gh=0;
+const qs=s=>document.querySelector(s); let AP=[];
+function fill(){const q=qs('#q').value.toLowerCase();
+  const l=AP.filter(a=>!q||(a.i+a.n+a.c+a.m).toLowerCase().includes(q)).slice(0,60);
+  qs('#ap').innerHTML=l.map(a=>`<option value="${AP.indexOf(a)}">${a.i} – ${a.n} (${a.m||a.c})</option>`).join(''); rw();}
+function rw(){const a=AP[qs('#ap').value];
+  qs('#rw').innerHTML=a?a.r.map((r,i)=>`<option value="${i}">Bahn ${r[0]} · ${r[4]} m · ${r[3]}°</option>`).join(''):'';}
+fetch('airports.json').then(r=>r.json()).then(d=>{AP=d;fill();}).catch(()=>qs('#ap').innerHTML='<option>airports.json nicht ladbar (Seite über GitHub Pages/Server öffnen)</option>');
+qs('#tk').value=localStorage.getItem('cesiumToken')||'';
+qs('#go').onclick=async()=>{
+  const a=AP[qs('#ap').value], r=a&&a.r[qs('#rw').value]; if(!r)return;
+  AC=ACS[qs('#ac').value]; const h=r[3]*D2R;
+  cfg={lat:r[1]+Math.cos(h)*25/111320,lon:r[2]+Math.sin(h)*25/(111320*Math.cos(r[1]*D2R)),hdg:r[3],air:qs('#air').checked};
+  const wd=+qs('#wd').value*D2R, ws=+qs('#ws').value*.5144; WIND=[-Math.sin(wd)*ws,-Math.cos(wd)*ws,0];
+  const [hh,mm]=(qs('#tm').value||'12:00').split(':').map(Number), d=new Date();
+  viewer.clock.currentTime=Cesium.JulianDate.fromDate(new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())+(hh+mm/60-cfg.lon/15)*36e5));
+  const tk=qs('#tk').value.trim(); qs('#go').textContent='Lade Gelände …'; gh=0;
   if(tk){
     try{
       localStorage.setItem('cesiumToken',tk); Cesium.Ion.defaultAccessToken=tk;
-      const tp=await Cesium.createWorldTerrainAsync(); viewer.terrainProvider=tp;
-      const [p]=await Cesium.sampleTerrainMostDetailed(tp,[Cesium.Cartographic.fromDegrees(cfg.lon,cfg.lat)]);
-      gh=p.height||0;
-    }catch(e){console.warn('Gelände nicht verfügbar:',e);}
+      const tp=await Cesium.createWorldTerrainAsync({requestWaterMask:true,requestVertexNormals:true}); viewer.terrainProvider=tp;
+      const [p]=await Cesium.sampleTerrainMostDetailed(tp,[Cesium.Cartographic.fromDegrees(cfg.lon,cfg.lat)]); gh=p.height||0;
+      scene.primitives.add(await Cesium.createOsmBuildingsAsync());
+    }catch(e){console.warn('Ion-Dienste nicht verfügbar:',e);}
   }
-  reset(); last=performance.now();
-  document.getElementById('ov').style.display='none';
+  reset(); last=performance.now(); paused=true; msg='Lade Karten …'; setTimeout(()=>{paused=false;msg='';},2500);
+  qs('#ov').style.display='none';
 };
 </script>
 </body>
