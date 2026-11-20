@@ -2,7 +2,8 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
 <title>Flugsimulator – Satellitenbilder</title>
 <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Widgets/widgets.css">
 <script src="https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Cesium.js"></script>
@@ -17,10 +18,28 @@
   #help{position:fixed;right:12px;top:12px;color:#fff;background:rgba(0,0,0,.5);padding:8px 12px;border-radius:8px;
     font:12px/1.55 ui-monospace,monospace;pointer-events:none}
   #ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(10,16,28,.88);z-index:9;color:#eee}
-  #ov div{max-width:460px;max-height:92vh;overflow:auto;padding:22px;background:#16202e;border-radius:14px;box-shadow:0 10px 40px #000}
+  #ov div{width:min(460px,calc(100vw - 24px));box-sizing:border-box;max-height:92vh;overflow:auto;padding:22px;background:#16202e;border-radius:14px;box-shadow:0 10px 40px #000}
   #ov h1{margin:0 0 6px;font-size:22px} #ov p{font-size:13px;color:#aab;margin:8px 0}
-  #ov select,#ov input{width:100%;padding:9px;margin:4px 0 10px;border-radius:7px;border:1px solid #345;background:#0d1520;color:#fff;box-sizing:border-box}
+  #ov select,#ov input{font-size:16px;width:100%;padding:9px;margin:4px 0 10px;border-radius:7px;border:1px solid #345;background:#0d1520;color:#fff;box-sizing:border-box}
   #ov button{width:100%;padding:12px;border:0;border-radius:8px;background:#2f8cff;color:#fff;font-size:16px;font-weight:700;cursor:pointer}
+  html,body{position:fixed;inset:0;overscroll-behavior:none;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  #tc{display:none;position:fixed;inset:0;pointer-events:none;z-index:5;--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px);--sb:env(safe-area-inset-bottom,0px)}
+  .touch #tc{display:block} .touch #help{display:none}
+  #tc>*{pointer-events:auto;touch-action:none;position:absolute}
+  #js{left:calc(14px + var(--sl));bottom:calc(14px + var(--sb));width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35)}
+  #jk{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px;border-radius:50%;background:rgba(255,255,255,.45)}
+  #th{right:calc(14px + var(--sr));bottom:calc(14px + var(--sb));width:54px;height:170px;border-radius:14px;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35);overflow:hidden}
+  #tf{position:absolute;left:0;right:0;bottom:0;height:0;background:rgba(47,140,255,.7)}
+  #th span{position:absolute;top:4px;left:0;right:0;text-align:center;font:700 11px sans-serif;color:#fff}
+  #rd{left:50%;margin-left:-80px;bottom:calc(14px + var(--sb));width:160px;height:42px;border-radius:21px;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35)}
+  #rk{position:absolute;top:50%;left:50%;width:36px;height:36px;margin:-18px;border-radius:50%;background:rgba(255,255,255,.45)}
+  #bt{right:calc(78px + var(--sr));bottom:calc(14px + var(--sb));display:grid;grid-template-columns:repeat(3,48px);gap:5px}
+  #bt button,#fs{height:38px;border:1px solid rgba(255,255,255,.4);border-radius:9px;background:rgba(20,30,45,.6);color:#fff;font:700 10px sans-serif;padding:0}
+  #fs{top:calc(8px + env(safe-area-inset-top,0px));right:calc(8px + var(--sr));width:42px;font-size:18px}
+  .touch #hud{top:calc(8px + env(safe-area-inset-top,0px));left:calc(8px + var(--sl));bottom:auto;font-size:11px;align-items:flex-start}
+  .touch #hz{width:84px;height:84px} .touch #msg{top:64px;font-size:18px}
+  @media(max-width:700px){#hud{font-size:11px}#help{display:none}}
+  @media(max-width:560px){#js{width:110px;height:110px}#rd{bottom:calc(136px + var(--sb))}}
 </style>
 </head>
 <body>
@@ -28,6 +47,17 @@
 <div id="msg"></div>
 <div id="help">↑/↓ Höhenruder · ←/→ Querruder · Q/E Seitenruder<br>W/S Gas · F/V Klappen · G Fahrwerk · X Spoiler<br>B Bremse · T Autotrimmung · ,/. Trimmung<br>C Kamera · Maus: umschauen · P Pause · R Neustart</div>
 <div id="hud"><canvas id="hz" width="130" height="130"></canvas><pre id="t"></pre></div>
+<div id="tc">
+  <div id="js"><div id="jk"></div></div>
+  <div id="th"><div id="tf"></div><span>GAS</span></div>
+  <div id="rd"><div id="rk"></div></div>
+  <div id="bt">
+    <button data-k="KeyF">Klappe+</button><button data-k="KeyV">Klappe−</button><button data-k="KeyG">Fahrwerk</button>
+    <button data-k="KeyX">Spoiler</button><button data-k="KeyB">Bremse</button><button data-k="KeyT">Trim</button>
+    <button data-k="KeyC">Kamera</button><button data-k="KeyP">Pause</button><button data-k="KeyR">Neustart</button>
+  </div>
+  <button id="fs">⛶</button>
+</div>
 <div id="ov"><div>
   <h1>✈ Flugsimulator</h1>
   <label>Flugzeug</label>
@@ -74,8 +104,9 @@ const viewer = new Cesium.Viewer('c',{
   infoBox:false, selectionIndicator:false, terrainProvider:new Cesium.EllipsoidTerrainProvider()});
 const scene=viewer.scene, cam=viewer.camera;
 scene.screenSpaceCameraController.enableInputs=false;
-scene.globe.maximumScreenSpaceError=1.1; scene.globe.enableLighting=true; scene.globe.showGroundAtmosphere=true;
-viewer.resolutionScale=Math.min(devicePixelRatio,2); scene.msaaSamples=4; scene.postProcessStages.fxaa.enabled=true;
+const MOB=matchMedia('(pointer:coarse)').matches||innerWidth<700, RS_MAX=Math.min(devicePixelRatio,MOB?1.5:2);
+scene.globe.maximumScreenSpaceError=MOB?2:1.1; scene.globe.enableLighting=true; scene.globe.showGroundAtmosphere=true;
+viewer.resolutionScale=RS_MAX; scene.msaaSamples=MOB?1:4; scene.postProcessStages.fxaa.enabled=true;
 scene.globe.depthTestAgainstTerrain=true;
 scene.fog.enabled=true; scene.fog.density=0.0002;
 viewer.clock.currentTime=Cesium.JulianDate.fromIso8601('2026-06-21T10:30:00Z');
@@ -170,16 +201,23 @@ addEventListener('keydown',e=>{keys[e.code]=true;
   if(e.code.startsWith('Arrow')||e.code==='Space')e.preventDefault();});
 addEventListener('keyup',e=>keys[e.code]=false);
 const cv=viewer.canvas;
-cv.addEventListener('pointerdown',()=>dragging=true); addEventListener('pointerup',()=>dragging=false);
-addEventListener('pointermove',e=>{if(dragging){lookYaw=clamp(lookYaw+e.movementX*0.005,-3.1,3.1);lookPitch=clamp(lookPitch-e.movementY*0.005,-1.2,1.2);}});
+let lx=0,ly=0,lid=null;
+cv.addEventListener('pointerdown',e=>{if(lid===null){lid=e.pointerId;dragging=true;lx=e.clientX;ly=e.clientY;}});
+const pend=e=>{if(e.pointerId===lid){lid=null;dragging=false;}};
+addEventListener('pointerup',pend); addEventListener('pointercancel',pend);
+addEventListener('pointermove',e=>{if(dragging&&e.pointerId===lid){lookYaw=clamp(lookYaw+(e.clientX-lx)*.005,-3.1,3.1);lookPitch=clamp(lookPitch-(e.clientY-ly)*.005,-1.2,1.2);lx=e.clientX;ly=e.clientY;}});
 function ease(cur,tgt,dt,up=3,dn=4){const r=(tgt===0?dn:up)*dt;return cur+clamp(tgt-cur,-r,r);}
+const T={ail:0,elev:0,rud:0};
 function controls(dt){
-  const tgt=(a,b)=>(keys[a]?1:0)-(keys[b]?1:0);
-  S.elev=ease(S.elev,tgt('ArrowUp','ArrowDown')*-1*-1*-1,dt); // Pfeil hoch = drücken
-  S.ail=ease(S.ail,tgt('ArrowRight','ArrowLeft'),dt);
-  S.rud=ease(S.rud,tgt('KeyE','KeyQ')+tgt('KeyD','KeyA'),dt);
-  S.thr=clamp(S.thr+(tgt('KeyW','KeyS')+tgt('PageUp','PageDown'))*0.4*dt,0,1);
-  if(!dragging){lookYaw*=Math.pow(0.02,dt);lookPitch*=Math.pow(0.02,dt);}
+  const kt=(a,b)=>(keys[a]?1:0)-(keys[b]?1:0), gp=(navigator.getGamepads&&navigator.getGamepads()[0])||null;
+  const dz=x=>Math.abs(x)<.12?0:x, pick=(...x)=>x.find(v=>Math.abs(v)>.03)||0;
+  const ctl=(cur,k,a)=>a!==0?cur+clamp(a-cur,-10*dt,10*dt):ease(cur,k,dt);
+  S.ail=ctl(S.ail,kt('ArrowRight','ArrowLeft'),pick(T.ail,gp?dz(gp.axes[0]):0));
+  S.elev=ctl(S.elev,kt('ArrowDown','ArrowUp'),pick(T.elev,gp?dz(gp.axes[1]):0));
+  S.rud=ctl(S.rud,kt('KeyE','KeyQ')+kt('KeyD','KeyA'),pick(T.rud,gp?dz(gp.axes[2]||0):0));
+  const gt=gp?((gp.buttons[7]&&gp.buttons[7].value)||0)-((gp.buttons[6]&&gp.buttons[6].value)||0):0;
+  S.thr=clamp(S.thr+(kt('KeyW','KeyS')+kt('PageUp','PageDown')+gt)*.4*dt,0,1);
+  if(!dragging){lookYaw*=Math.pow(.02,dt);lookPitch*=Math.pow(.02,dt);}
 }
 
 // ================= Flugzeugmodell & Kamera =================
@@ -198,6 +236,7 @@ function render(){
   const full=Cesium.Matrix3.multiply(Cesium.Matrix4.getMatrix3(M,new Cesium.Matrix3()),bodyM,new Cesium.Matrix3());
   eQuat=Cesium.Quaternion.fromRotationMatrix(full);
   plane.show=camMode===1;
+  const asp=innerWidth/innerHeight; cam.frustum.fov=asp>=1?1.3:Math.min(1.75,2*Math.atan(Math.tan(.7)/asp));
   let dir=rot(rot(S.f,S.u,-lookYaw),S.r,lookPitch), up=rot(S.u,S.r,lookPitch);
   let eye;
   if(camMode===0){ eye=V.add(V.sc(S.f,AC.eye[0]),V.sc(S.u,AC.eye[1])); }
@@ -209,9 +248,14 @@ function render(){
 // ================= Hauptschleife =================
 let last=performance.now();
 const tEl=document.getElementById('t'), mEl=document.getElementById('msg'), hz=document.getElementById('hz').getContext('2d');
+let fpsAcc=0,fpsN=0,rs=viewer.resolutionScale;   // automatische Auflösungsanpassung an die Geräteleistung
+function adapt(raw){ if(raw>.5)return; fpsAcc+=raw; fpsN++;
+  if(fpsAcc>2.5){const fps=fpsN/fpsAcc; fpsAcc=fpsN=0;
+    if(fps<26&&rs>.5)rs=Math.max(.5,rs*.85); else if(fps>56&&rs<RS_MAX)rs=Math.min(RS_MAX,rs*1.1);
+    viewer.resolutionScale=rs;}}
 scene.preUpdate.addEventListener(()=>{
   if(!S)return;
-  const now=performance.now(); let dt=Math.min((now-last)/1000,0.05); last=now;
+  const now=performance.now(), raw=(now-last)/1000; let dt=Math.min(raw,0.05); last=now; adapt(raw);
   const hh=scene.globe.getHeight(new Cesium.Cartographic(S.lon,S.lat)); if(hh!==undefined)gh=hh;
   if(!paused){ controls(dt); const n=4; for(let i=0;i<n;i++)step(dt/n); }
   render(); hud();
@@ -227,6 +271,7 @@ GAS ${(S.thr*100).toFixed(0).padStart(3)}% (N ${(S.n*100).toFixed(0)}%)  TRIM ${
 KLAPPEN ${(S.flapT*30).toFixed(0)}°  FAHRWERK ${S.gear>.95?'AUS':S.gear<.05?'EIN':'...'}  SPOILER ${(S.spl*100).toFixed(0)}%
 SPRIT ${S.fuel.toFixed(0)} kg  ${S.onGround?'AM BODEN ':''}${keys.KeyB||keys.Space||S.park?'BREMSE ':''}${paused?'PAUSE':''}`;
   mEl.textContent=msg||(S.stall?'STALL!':'');
+  tfEl.style.height=S.thr*100+'%';
   hz.clearRect(0,0,130,130); hz.save(); hz.beginPath(); hz.arc(65,65,63,0,7); hz.clip();
   hz.translate(65,65); hz.rotate(-rol); hz.translate(0,pit/D2R*2.2);
   hz.fillStyle='#3a8fd9'; hz.fillRect(-150,-300,300,300); hz.fillStyle='#7a5a32'; hz.fillRect(-150,0,300,300);
@@ -256,12 +301,39 @@ qs('#go').onclick=async()=>{
       localStorage.setItem('cesiumToken',tk); Cesium.Ion.defaultAccessToken=tk;
       const tp=await Cesium.createWorldTerrainAsync({requestWaterMask:true,requestVertexNormals:true}); viewer.terrainProvider=tp;
       const [p]=await Cesium.sampleTerrainMostDetailed(tp,[Cesium.Cartographic.fromDegrees(cfg.lon,cfg.lat)]); gh=p.height||0;
-      scene.primitives.add(await Cesium.createOsmBuildingsAsync());
+      if(!MOB)scene.primitives.add(await Cesium.createOsmBuildingsAsync());
     }catch(e){console.warn('Ion-Dienste nicht verfügbar:',e);}
   }
   reset(); last=performance.now(); paused=true; msg='Lade Karten …'; setTimeout(()=>{paused=false;msg='';},2500);
   qs('#ov').style.display='none';
+  try{ if(isTouch){document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen().catch(()=>{});
+    screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape').catch(()=>{});} }catch(e){}
 };
+
+// ================= Touch-Bedienung =================
+const isTouch=navigator.maxTouchPoints>0||matchMedia('(pointer:coarse)').matches, tfEl=qs('#tf');
+if(isTouch)document.body.classList.add('touch');
+function pad(el,knob,fn){
+  let id=null; const mv=e=>{const r=el.getBoundingClientRect(),R=r.width/2-knob.offsetWidth/2,
+    dx=clamp((e.clientX-r.left-r.width/2)/R,-1,1), dy=el.id==='rd'?0:clamp((e.clientY-r.top-r.height/2)/R,-1,1);
+    fn(dx,dy); knob.style.transform=`translate(${dx*R}px,${dy*R}px)`;};
+  el.addEventListener('pointerdown',e=>{id=e.pointerId;el.setPointerCapture(id);mv(e);});
+  el.addEventListener('pointermove',e=>{if(e.pointerId===id)mv(e);});
+  const up=e=>{if(e.pointerId===id){id=null;fn(0,0);knob.style.transform='';}};
+  el.addEventListener('pointerup',up); el.addEventListener('pointercancel',up);}
+pad(qs('#js'),qs('#jk'),(x,y)=>{T.ail=x;T.elev=y;});
+pad(qs('#rd'),qs('#rk'),x=>{T.rud=x;});
+const th=qs('#th'); let tid=null;
+const setTh=e=>{const r=th.getBoundingClientRect(); if(S)S.thr=clamp(1-(e.clientY-r.top)/r.height,0,1);};
+th.addEventListener('pointerdown',e=>{tid=e.pointerId;th.setPointerCapture(tid);setTh(e);});
+th.addEventListener('pointermove',e=>{if(e.pointerId===tid)setTh(e);});
+th.addEventListener('pointerup',()=>tid=null);
+document.querySelectorAll('#bt button').forEach(b=>{const fire=t=>dispatchEvent(new KeyboardEvent(t,{code:b.dataset.k}));
+  b.addEventListener('pointerdown',e=>{e.preventDefault();fire('keydown');b.style.background='#2f8cff';});
+  const up=()=>{b.style.background='';fire('keyup');};
+  b.addEventListener('pointerup',up); b.addEventListener('pointerleave',up); b.addEventListener('pointercancel',up);});
+qs('#fs').onclick=()=>{const d=document,el=d.documentElement; try{ if(d.fullscreenElement)d.exitFullscreen(); else (el.requestFullscreen||el.webkitRequestFullscreen).call(el); }catch(e){}};
+if(!document.fullscreenEnabled&&!document.webkitFullscreenEnabled)qs('#fs').style.display='none';
 </script>
 </body>
 </html>
